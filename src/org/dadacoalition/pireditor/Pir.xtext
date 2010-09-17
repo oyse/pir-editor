@@ -1,0 +1,196 @@
+grammar org.dadacoalition.pireditor.Pir hidden( NONE_NL_WS, COMMENT, NL ) 
+
+generate pir "http://www.dadacoalition.org/pireditor/Pir"
+
+import "http://www.eclipse.org/emf/2002/Ecore" as ecore
+
+
+
+File:
+    (
+        statements+=Statement |
+        subroutines+=SubDef
+    )* ;
+    
+Statement hidden( NONE_NL_WS, COMMENT ):
+    ( directives+=Directive |
+      (label=Label ':')? instructions+=Instruction ) NL;
+
+Directive:
+    LocalDirective |
+    NamespaceDirective |
+    LexDirective |
+    ConstDirective |
+    LoadlibDirective |
+    HLLDirective |
+    LineDirective |
+    FileDirective |
+    AnnotateDirective |
+    IncludeDirective;    
+
+
+Instruction:
+    Assignment |
+    AttributeAssignment |
+    OpcodeInvocation |
+    FunctionCall |
+    MethodCall;
+
+terminal VARIABLE:
+    '$P' '0'..'9'+ |
+    '$I' '0'..'9'+ |
+    '$N' '0'..'9'+ |
+    '$S' '0'..'9'+ ;
+
+Assignment:
+    VARIABLE AssignmentOperator VARIABLE |
+    VARIABLE AssignmentOperator Constant |
+    VARIABLE AssignmentOperator UnaryOperator VARIABLE |
+    VARIABLE AssignmentOperator VARIABLE BinaryOperator VARIABLE |
+    VARIABLE AssignmentOperator VARIABLE '[' VARIABLE ']';
+
+AssignmentOperator:
+    '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '.=' | '&=' '|=' | '~=' | '<<=' | '>>=' | '>>>='; 
+
+AttributeAssignment:
+    VARIABLE '[' VARIABLE ']' AssignmentOperator VARIABLE;
+
+FunctionCall:
+    PARROTID '(' (Argument (',' Argument)?)? ')';
+
+MethodCall:
+    'Test';
+
+OpcodeInvocation:
+    name=Opcode (OpcodeArgument (',' OpcodeArgument)?)?;
+    
+Opcode:
+    PARROTID;
+
+OpcodeArgument:
+    VARIABLE | Constant;
+
+Argument:
+    VARIABLE ArgumentModifier?;
+
+ArgumentModifier:
+    'Test';
+
+UnaryOperator:
+    '!' | '-' | '~'; 
+
+BinaryOperator:
+    '+' | '-' | '*' | '/' | '%' | '**' |
+    '.' |
+    '<<' | '>>' | '>>>' |
+    '&&' | '||' | '~~' |
+    '&' | '|' | '~' |
+    RelationOperator;
+
+RelationOperator:
+    '<' | '<=' | '==' | '!=' | '>=' | '>';
+    
+    
+Label:
+    PARROTID;
+
+// newlines are relevant for subs
+SubDef hidden( NONE_NL_WS, COMMENT):
+    '.sub' name=(PARROTID|STRING) (':'modifiers+=SubModifier)* NL+
+    (statements+=Statement)*   
+    NL? '.end';
+
+SubModifier:
+    'main' |
+    'load' |
+    'init' |
+    'anon' |
+    'immediate' |
+    'postcomp' |
+    'method' '(' ')' |
+    'vtable' |
+    'outer' '(' PARROTID ')' |
+    'subid' '(' STRING ')' |
+    'instanceof' '(' STRING ')' |
+    'nsentry' '(' STRING ')' 
+    ;
+
+LocalDirective :
+    '.local' type=Type PARROTID (':uniquereq');
+    
+IncludeDirective :
+    '.include' STRING;
+
+NamespaceDirective:
+    '.namespace' '[' (PARROTID (';' PARROTID)?)? ']';    
+
+LexDirective:
+    '.lex' STRING '$P' INT;
+
+ConstDirective:
+    '.const' Type PARROTID '=' Constant;
+
+LoadlibDirective:
+    '.loadlib' STRING;
+    
+HLLDirective:
+    '.HLL' STRING;
+    
+LineDirective:
+    '.line' INT;
+    
+FileDirective:
+    '.file' STRING;
+    
+AnnotateDirective:
+    '.annotate' STRING Constant;
+    
+Constant:
+    ((':' Encoding)?':' Charset)? STRING |    
+    INT;
+
+Charset:
+    'ascii' | 'binary' | 'unicode' | 'iso-8859-1';
+
+Encoding:
+    'utf8';    
+    
+Type :
+    'int' |
+    'num' |
+    'string' |
+    'pmc';
+
+
+Keywords:
+    'goto'   |
+    'if'     |
+    'int'    |
+    'null'   | 
+    'num'    |
+    'pmc'    |
+    'string' |
+    'unless';
+    
+terminal COMMENT :
+    '#' !('\n'|'\r')* ('\r'? '\n')?;   
+    
+terminal NL:
+    ('\r'? '\n');
+    
+terminal INT returns ecore::EInt: ('0'..'9')+;
+
+terminal PARROTID :  
+    ('a'..'z'|'A'..'Z'|'_') ('a'..'z'|'A'..'Z'|'_'|'0'..'9')*
+    ;
+
+terminal STRING: 
+            '"' ( '\\' ('b'|'t'|'n'|'f'|'r'|'"'|"'"|'\\') | !('\\'|'"') )* '"' |
+            "'" ( '\\' ('b'|'t'|'n'|'f'|'r'|'"'|"'"|'\\') | !('\\'|"'") )* "'"
+        ; 
+
+terminal NONE_NL_WS:
+    (' '|'\t' )+;
+
+terminal ANY_OTHER: 
+    .;    
