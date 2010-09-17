@@ -1,4 +1,4 @@
-grammar org.dadacoalition.pireditor.Pir hidden( NONE_NL_WS, COMMENT, NL ) 
+grammar org.dadacoalition.pireditor.Pir hidden( NONE_NL_WS, COMMENT, POD_COMMENT, NL ) 
 
 generate pir "http://www.dadacoalition.org/pireditor/Pir"
 
@@ -12,7 +12,7 @@ File:
         subroutines+=SubDef
     )* ;
     
-Statement hidden( NONE_NL_WS, COMMENT ):
+Statement hidden( NONE_NL_WS, COMMENT, POD_COMMENT ):
     ( directives+=Directive |
       (label=Label ':')? instructions+=Instruction ) NL;
 
@@ -36,18 +36,18 @@ Instruction:
     FunctionCall |
     MethodCall;
 
-terminal VARIABLE:
-    '$P' '0'..'9'+ |
-    '$I' '0'..'9'+ |
-    '$N' '0'..'9'+ |
-    '$S' '0'..'9'+ ;
-
 Assignment:
-    VARIABLE AssignmentOperator VARIABLE |
-    VARIABLE AssignmentOperator Constant |
-    VARIABLE AssignmentOperator UnaryOperator VARIABLE |
-    VARIABLE AssignmentOperator VARIABLE BinaryOperator VARIABLE |
-    VARIABLE AssignmentOperator VARIABLE '[' VARIABLE ']';
+    (VARIABLE|NamedVariable) AssignmentOperator 
+        ( VARIABLE |
+          Constant |
+          UnaryOperator VARIABLE |
+          VARIABLE BinaryOperator VARIABLE |
+          VARIABLE '[' VARIABLE ']' |
+          FunctionCall |
+          MethodCall |
+          OpcodeInvocation
+    );
+
 
 AssignmentOperator:
     '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '.=' | '&=' '|=' | '~=' | '<<=' | '>>=' | '>>>='; 
@@ -56,22 +56,22 @@ AttributeAssignment:
     VARIABLE '[' VARIABLE ']' AssignmentOperator VARIABLE;
 
 FunctionCall:
-    PARROTID '(' (Argument (',' Argument)?)? ')';
+    STRING | PARROTID '(' (Argument (',' Argument)?)? ')';
 
 MethodCall:
     'Test';
 
 OpcodeInvocation:
-    name=Opcode (OpcodeArgument (',' OpcodeArgument)?)?;
+    Opcode (OpcodeArgument (',' OpcodeArgument)?)?;
     
 Opcode:
     PARROTID;
 
 OpcodeArgument:
-    VARIABLE | Constant;
+    VARIABLE | Constant | Namespace;
 
 Argument:
-    VARIABLE ArgumentModifier?;
+    VARIABLE ArgumentModifier? | Namespace;
 
 ArgumentModifier:
     'Test';
@@ -95,7 +95,7 @@ Label:
     PARROTID;
 
 // newlines are relevant for subs
-SubDef hidden( NONE_NL_WS, COMMENT):
+SubDef hidden( NONE_NL_WS, COMMENT, POD_COMMENT):
     '.sub' name=(PARROTID|STRING) (':'modifiers+=SubModifier)* NL+
     (statements+=Statement)*   
     NL? '.end';
@@ -116,13 +116,16 @@ SubModifier:
     ;
 
 LocalDirective :
-    '.local' type=Type PARROTID (':uniquereq');
+    '.local' type=Type NamedVariable (',' NamedVariable)* ':uniquereq'?;
     
 IncludeDirective :
     '.include' STRING;
 
 NamespaceDirective:
-    '.namespace' '[' (PARROTID (';' PARROTID)?)? ']';    
+    '.namespace' Namespace;    
+
+Namespace:
+    '[' (STRING (';' STRING)?)? ']';
 
 LexDirective:
     '.lex' STRING '$P' INT;
@@ -161,6 +164,8 @@ Type :
     'string' |
     'pmc';
 
+NamedVariable :
+    PARROTID;
 
 Keywords:
     'goto'   |
@@ -174,10 +179,31 @@ Keywords:
     
 terminal COMMENT :
     '#' !('\n'|'\r')* ('\r'? '\n')?;   
+
+terminal POD_COMMENT :
+    ('=pod'      |
+     '=head1'    |
+     '=head2'    |
+     '=head3'    |
+     '=head4'    |
+     '=over'     |
+     '=item'     |
+     '=back'     |
+     '=begin'    |
+     '=end'      |
+     '=for'      |
+     '=encoding') -> 
+    '=cut' NL;
     
 terminal NL:
     ('\r'? '\n');
-    
+
+terminal VARIABLE:
+    '$P' '0'..'9'+ |
+    '$I' '0'..'9'+ |
+    '$N' '0'..'9'+ |
+    '$S' '0'..'9'+ ;
+   
 terminal INT returns ecore::EInt: ('0'..'9')+;
 
 terminal PARROTID :  
@@ -190,7 +216,7 @@ terminal STRING:
         ; 
 
 terminal NONE_NL_WS:
-    (' '|'\t' )+;
+    (' '|'\t' )+; 
 
 terminal ANY_OTHER: 
     .;    
