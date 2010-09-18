@@ -1,0 +1,12 @@
+== Pir Editor ==
+
+Pir Editor is an Eclipse plugin for editing files in the Parrot Intermediate 
+Representation (PIR) format.
+
+It is implemented using the the Eclipse XText framework.
+
+=== Status ===
+
+This project is currently very much at the alpha stage and probably not that
+useable. Checking back later.
+
