@@ -8,5 +8,5 @@ It is implemented using the the Eclipse XText framework.
 === Status ===
 
 This project is currently very much at the alpha stage and probably not that
-useable. Checking back later.
+useable. Check back later.
 
