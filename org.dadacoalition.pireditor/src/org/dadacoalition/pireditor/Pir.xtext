@@ -14,7 +14,7 @@ File:
     
 Statement hidden( NONE_NL_WS, COMMENT, POD_COMMENT ):
     ( directives+=Directive |
-      (label=Label ':')? instructions+=Instruction ) NL;
+      (label=Label SEMICOLON NL* )? instructions+=Instruction ) NL+;
 
 Directive:
     LocalDirective |
@@ -27,21 +27,41 @@ Directive:
     FileDirective |
     AnnotateDirective |
     IncludeDirective |
-    ParamDirective
+    ParamDirective |
+    TailcallDirective |
+    ReturnDirective |
+    AnyDirective
     ;    
 
 
-Instruction:
+Instruction hidden( NONE_NL_WS, COMMENT, POD_COMMENT ):
     Assignment |
-    AttributeAssignment |
     OpcodeInvocation |
     FunctionCall |
-    MethodCall;
+    MethodCall |
+    Conditional |
+    GotoStatement |
+    NULL (VARIABLE|NamedVariable)
+    ;
 
-Assignment:
-    (VARIABLE|NamedVariable) AssignmentOperator 
+Conditional:
+    CONDITION_KW ConditionExpression GotoStatement;
+    
+ConditionExpression:
+    VARIABLE |
+    NamedVariable |
+    ( UnaryOperator (VARIABLE|NamedVariable)) |
+    ( (VARIABLE|NamedVariable) BinaryOperator (VARIABLE|NamedVariable) ) |
+    NULL (VARIABLE|NamedVariable);
+
+GotoStatement:
+    GOTO (Label|STRING);
+
+Assignment hidden( NONE_NL_WS, COMMENT, POD_COMMENT ):
+    (VARIABLE|NamedVariable) 
+    (EQUAL_OPERATOR | ASSIGNMENT_OPERATOR)
         ( VARIABLE |
-          Constant |
+          Constant
           UnaryOperator VARIABLE |
           VARIABLE BinaryOperator VARIABLE |
           VARIABLE '[' VARIABLE ']' |
@@ -50,57 +70,50 @@ Assignment:
           OpcodeInvocation
     );
 
+FunctionCall hidden():
+    (STRING | PARROTID) LEFT_PARENS NONE_NL_WS* ArgumentList RIGHT_PARENS;
 
-AssignmentOperator:
-    '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '.=' | '&=' '|=' | '~=' | '<<=' | '>>=' | '>>>='; 
+ArgumentList:
+    (Argument (NONE_NL_WS* COMMA NONE_NL_WS* Argument)*)?;
 
-AttributeAssignment:
-    VARIABLE '[' VARIABLE ']' AssignmentOperator VARIABLE;
-
-FunctionCall:
-    STRING | PARROTID '(' (Argument (',' Argument)?)? ')';
-
-MethodCall:
-    'Test';
+MethodCall hidden():
+    (VARIABLE|NamedVariable) DOT_OPERATOR FunctionCall;
 
 OpcodeInvocation:
-    Opcode (OpcodeArgument (',' OpcodeArgument)?)?;
+    Opcode (OpcodeArgument (COMMA OpcodeArgument)*)?;
     
 Opcode:
     PARROTID;
 
 OpcodeArgument:
-    VARIABLE | Constant | Namespace;
+    VARIABLE | NamedVariable | Constant | Namespace;
 
-Argument:
-    VARIABLE ArgumentModifier? | Namespace;
+Argument hidden( NONE_NL_WS ):
+    (STRING FAT_ARROW)? 
+    (VARIABLE | Constant | NamedVariable | Namespace) 
+    ArgumentModifier?;
 
-ArgumentModifier:
-    'Test';
+ArgumentModifier hidden():
+    SEMICOLON PARROTID;
 
 UnaryOperator:
     '!' | '-' | '~'; 
 
 BinaryOperator:
     '+' | '-' | '*' | '/' | '%' | '**' |
-    '.' |
+    DOT_OPERATOR |
     '<<' | '>>' | '>>>' |
     '&&' | '||' | '~~' |
     '&' | '|' | '~' |
-    RelationOperator;
-
-RelationOperator:
-    '<' | '<=' | '==' | '!=' | '>=' | '>';
-    
+    RELATION_OPERATOR;  
     
 Label:
     PARROTID;
 
-// newlines are relevant for subs
 SubDef hidden( NONE_NL_WS, COMMENT, POD_COMMENT):
-    '.sub' name=(PARROTID|STRING) (':'modifiers+=SubModifier)* NL+
+    SubStartDirective name=(PARROTID|STRING) ( SEMICOLON modifiers+=SubModifier)* NL+
     (statements+=Statement)*   
-    NL? '.end';
+    NL? SubEndDirective;
 
 SubModifier:
     'main' |
@@ -109,55 +122,84 @@ SubModifier:
     'anon' |
     'immediate' |
     'postcomp' |
-    'method' ( '(' STRING ')' )? |
+    'method' ( LEFT_PARENS STRING RIGHT_PARENS )? |
     'vtable' |
-    'outer' '(' PARROTID ')' |
-    'subid' '(' STRING ')' |
-    'instanceof' '(' STRING ')' |
-    'nsentry' '(' STRING ')' 
+    'outer' LEFT_PARENS PARROTID RIGHT_PARENS |
+    'subid' LEFT_PARENS STRING RIGHT_PARENS |
+    'instanceof' LEFT_PARENS STRING RIGHT_PARENS |
+    'nsentry' LEFT_PARENS STRING RIGHT_PARENS 
     ;
 
-LocalDirective :
-    '.local' type=Type NamedVariable (',' NamedVariable)* ':uniquereq'?;
+LocalDirective hidden():
+    DOT_OPERATOR 'local' 
+    NONE_NL_WS+ type=TYPE 
+    NONE_NL_WS+ NamedVariable (NONE_NL_WS* COMMA NONE_NL_WS* NamedVariable)* 
+    (NONE_NL_WS+ ':uniquereq')?;
     
-IncludeDirective :
-    '.include' STRING;
+IncludeDirective hidden():
+    DOT_OPERATOR 'include' NONE_NL_WS+ STRING;
 
-NamespaceDirective:
-    '.namespace' Namespace;    
+NamespaceDirective hidden():
+    DOT_OPERATOR 'namespace' NONE_NL_WS+ Namespace;    
 
-Namespace:
+Namespace hidden( NONE_NL_WS ):
     '[' (STRING (';' STRING)?)? ']';
 
-LexDirective:
-    '.lex' STRING '$P' INT;
+LexDirective hidden():
+    DOT_OPERATOR 'lex' NONE_NL_WS+ NamedVariable NONE_NL_WS+ '$P' INT;
 
-ConstDirective:
-    '.const' Type PARROTID '=' Constant;
+ConstDirective hidden():
+    DOT_OPERATOR 'const' NONE_NL_WS+ 
+    TYPE PARROTID NONE_NL_WS+ 
+    EQUAL_OPERATOR NONE_NL_WS* 
+    Constant;
 
-LoadlibDirective:
-    '.loadlib' STRING;
+LoadlibDirective hidden():
+    DOT_OPERATOR 'loadlib' NONE_NL_WS+ STRING;
     
-HLLDirective:
-    '.HLL' STRING;
+HLLDirective hidden():
+    DOT_OPERATOR 'HLL' NONE_NL_WS+ STRING;
     
-LineDirective:
-    '.line' INT;
+LineDirective hidden():
+    DOT_OPERATOR 'line' NONE_NL_WS+ INT;
     
-FileDirective:
-    '.file' STRING;
+FileDirective hidden():
+    DOT_OPERATOR 'file' NONE_NL_WS+ STRING;
     
-AnnotateDirective:
-    '.annotate' STRING Constant;
+AnnotateDirective hidden():
+    DOT_OPERATOR 'annotate' NONE_NL_WS+ STRING NONE_NL_WS+ Constant;
 
-ParamDirective:
-    '.param' Type NamedVariable (',' NamedVariable)* ParamModifier*;
+ParamDirective hidden():
+    DOT_OPERATOR 'param' NONE_NL_WS+ 
+    TYPE NONE_NL_WS+ 
+    NamedVariable (NONE_NL_WS* COMMA NONE_NL_WS* NamedVariable)* (NONE_NL_WS+ ParamModifier)*;
 
-ParamModifier:
-    ':' ( 'optional' | 'slurpy' | 'opt_flag' | 'flat' | 'named' '(' STRING ')' );
+SubStartDirective hidden():
+    DOT_OPERATOR 'sub';
+    
+SubEndDirective hidden():
+    DOT_OPERATOR 'end';
+
+TailcallDirective hidden():
+    DOT_OPERATOR 'tailcall' NONE_NL_WS+ FunctionCall;
+
+ReturnDirective hidden():
+    DOT_OPERATOR 'return' (NONE_NL_WS* ReturnArguments)?;    
+
+ReturnArguments hidden(NONE_NL_WS):
+    LEFT_PARENS 
+            ((VARIABLE | Constant | NamedVariable | Namespace)
+            ( COMMA (VARIABLE | Constant | NamedVariable | Namespace) )*)?         
+    RIGHT_PARENS; 
+
+AnyDirective:
+    DOT_OPERATOR PARROTID;
+
+ParamModifier hidden():
+    SEMICOLON PARROTID (NONE_NL_WS* LEFT_PARENS NONE_NL_WS* STRING NONE_NL_WS* RIGHT_PARENS)?;
     
 Constant:
-    ((':' Encoding)?':' Charset)? STRING |    
+    ((SEMICOLON Encoding)?SEMICOLON Charset)? STRING |    
     INT;
 
 Charset:
@@ -166,25 +208,11 @@ Charset:
 Encoding:
     'utf8';    
     
-Type :
-    'int' |
-    'num' |
-    'string' |
-    'pmc';
+
 
 NamedVariable :
     PARROTID;
-
-Keywords:
-    'goto'   |
-    'if'     |
-    'int'    |
-    'null'   | 
-    'num'    |
-    'pmc'    |
-    'string' |
-    'unless';
-    
+   
 terminal COMMENT :
     '#' !('\n'|'\r')* ('\r'? '\n')?;   
 
@@ -202,21 +230,63 @@ terminal POD_COMMENT :
      '=for'      |
      '=encoding') -> 
     '=cut' NL;
+
+terminal RELATION_OPERATOR:
+    '<' | '<=' | '==' | '!=' | '>=' | '>';
+
+terminal EQUAL_OPERATOR:
+    '=';
+
+terminal ASSIGNMENT_OPERATOR:
+    '+=' | '-=' | '*=' | '/=' | '%=' | '.=' | '&=' | '|=' | '~=' | '<<=' | '>>=' | '>>>='; 
+
+terminal DOT_OPERATOR:
+    '.';
     
 terminal NL:
     ('\r'? '\n');
 
 terminal VARIABLE:
-    '$P' '0'..'9'+ |
-    '$I' '0'..'9'+ |
-    '$N' '0'..'9'+ |
-    '$S' '0'..'9'+ ;
+    '$P' INT |
+    '$I' INT |
+    '$N' INT |
+    '$S' INT ;
    
 terminal INT returns ecore::EInt: ('0'..'9')+;
+
+terminal GOTO:
+    'goto';
+
+terminal CONDITION_KW:
+    'if' | 'unless';
+    
+terminal NULL:
+    'null';
+
+terminal TYPE :
+    'int' |
+    'num' |
+    'string' |
+    'pmc';
 
 terminal PARROTID :  
     ('a'..'z'|'A'..'Z'|'_') ('a'..'z'|'A'..'Z'|'_'|'0'..'9')*
     ;
+
+terminal COMMA:
+    ',';
+
+terminal LEFT_PARENS:
+    '(';
+    
+terminal RIGHT_PARENS:
+    ')';
+
+terminal FAT_ARROW:
+    '=>';
+
+terminal SEMICOLON:
+    ':';
 
 terminal STRING: 
             '"' ( '\\' ('b'|'t'|'n'|'f'|'r'|'"'|"'"|'\\') | !('\\'|'"') )* '"' |
